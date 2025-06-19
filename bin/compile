@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+BUILD_DIR=$1
+CACHE_DIR=$2
+# ENV_DIR=$3
+
+arrow() {
+  echo '----->' "$@"
+}
+
+indent() {
+  echo '      ' "$@"
+}
+
+get_latest_release() {
+  indent "Fetching latest release version..."
+  ACCURATE_SCALER_OTC_AGENT_VERSION=$(curl -sL -m 25 https://api.github.com/repos/milnueve/accurate-scaler-otelcol-agent/releases/latest | jq .name | tr -d '"' )
+  if [[ $ACCURATE_SCALER_OTC_AGENT_VERSION == "" ]]; then
+    indent "ERROR: Failed to fetch the latest version. Aborting buildpack installation."
+    exit 1
+  else
+    indent "Latest version released: ${ACCURATE_SCALER_OTC_AGENT_VERSION}."
+  fi
+}
+
+fetch_otelcol_agent() {
+  if [[ ! -f $CACHE_DIR/accurate-scaler/accurate-scaler-otelcol-agent-${ACCURATE_SCALER_OTC_AGENT_VERSION} ]]; then
+    if [[ -d $CACHE_DIR/accurate-scaler ]]; then
+      indent "Found an older version on the cache, removing it and downloading the latest version."
+      rm -f $CACHE_DIR/accurate-scaler/accurate-scaler-otelcol-agent*
+    fi
+    mkdir -p $CACHE_DIR/accurate-scaler
+    pushd $CACHE_DIR/accurate-scaler &>/dev/null
+    indent "Fetching AccurateScaler OTel Collector Agent ${ACCURATE_SCALER_OTC_AGENT_VERSION}..."
+    curl -sL -o accurate-scaler-otelcol-agent.tar.gz https://github.com/milnueve/accurate-scaler-otelcol-agent/releases/download/${ACCURATE_SCALER_OTC_AGENT_VERSION}/accurate-scaler-otelcol-agent_Linux_x86_64.tar.gz
+    tar -xzf accurate-scaler-otelcol-agent.tar.gz accurate-scaler-otelcol-agent
+    mv accurate-scaler-otelcol-agent accurate-scaler-otelcol-agent-${ACCURATE_SCALER_OTC_AGENT_VERSION}
+    rm -f accurate-scaler-otelcol-agent.tar.gz
+    popd &>/dev/null
+  else
+    indent "AccurateScaler OTel Collector Agent ${ACCURATE_SCALER_OTC_AGENT_VERSION} found in cache."
+  fi
+}
+
+install_otelcol_agent() {
+  indent "Installing AccurateScaler OTel Collector Agent at the destination folder."
+  cp $CACHE_DIR/accurate-scaler/accurate-scaler-otelcol-agent-${ACCURATE_SCALER_OTC_AGENT_VERSION} $BUILD_DIR/bin/accurate-scaler-otelcol-agent
+  chmod a+x $BUILD_DIR/bin/accurate-scaler-otelcol-agent
+}
+
+arrow "AccurateScaler OTel Collector Agent installation"
+mkdir -p "$BUILD_DIR/bin"
+get_latest_release
+fetch_otelcol_agent
+install_otelcol_agent
+
+arrow "Installing startup script ..."
+mkdir -p $BUILD_DIR/.profile.d
+cat > ${BUILD_DIR}/.profile.d/accurate-scaler.sh <<-SH
+export PATH=\$PATH:\$HOME/bin
+export ACCURATE_SCALER_ADDON=\$(env | grep "^ACCURATE_SCALER.*_APP_ID=" | sed 's/^\\(ACCURATE_SCALER.*\\)_APP_ID.*$/\\1/g' || true)
+
+# Check if buildpack was correctly installed or exit with failure
+if [[ ! -x \$HOME/bin/accurate-scaler-otelcol-agent ]]; then
+  echo "[accurate-scaler] ERROR: OTel Collector Agent not found. Buildpack failed to install correctly."
+  exit 1
+fi
+
+for process_type in \${ACCURATE_SCALER_MONITORED_SERVICE_TYPES:-web worker}; do
+  if [[ \$DYNO =~ ^\$process_type.* ]]; then
+    export ACCURATE_SCALER_SERVICE_TYPE=\$process_type
+  fi
+done
+
+# Check if dyno is running a monitored process type or notify and exit without failing
+if [[ \$ACCURATE_SCALER_SERVICE_TYPE == "" ]]; then
+  echo "[accurate-scaler] WARNING: Dyno '\$DYNO' is not running a monitored process type. OTel Collector Agent won't be started."
+else
+  # Check if add-on is (correctly) installed or notify and exit with error.
+  if [[ \$ACCURATE_SCALER_ADDON == "" ]]; then
+    echo "[accurate-scaler] ERROR: Add-on config vars missing. OTel Collector Agent won't be started."
+  else
+    echo "[accurate-scaler] Starting OTel Collector Agent..."
+    accurate-scaler-otelcol-agent --config=file:\$HOME/accurate-scaler/otelcol-agent-config.yaml &
+  fi
+fi
+SH
+
+arrow "Creating AccurateScaler OTel Collector Agent configuration file..."
+mkdir -p $BUILD_DIR/accurate-scaler
+cat > $BUILD_DIR/accurate-scaler/otelcol-agent-config.yaml <<-YAML
+extensions:
+  oauth2client:
+    client_id: "\${\${ACCURATE_SCALER_ADDON}_OAUTH_CLIENT_ID}"
+    client_secret: "\${\${ACCURATE_SCALER_ADDON}_OAUTH_CLIENT_SECRET}"
+    token_url: "\${\${ACCURATE_SCALER_ADDON}_OAUTH_TOKEN_URL}"
+
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: "\${\${ACCURATE_SCALER_ADDON}_APP_ID}"
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["localhost:9394"]
+           relabel_configs:
+            - source_labels: [__address__]
+              target_label: instance
+              replacement: "\${DYNO}"
+
+processors:
+  batch:
+    timeout: 30s
+
+  metricstransform:
+    transforms:
+      - include: .*
+        match_type: regexp
+        action: update
+        operations:
+          - action: add_label
+            new_label: service_type
+            new_value: "\${ACCURATE_SCALER_SERVICE_TYPE}"
+
+exporters:
+  otlphttp:
+    endpoint: "\${\${ACCURATE_SCALER_ADDON}_OTELCOL_URL}"
+    tls:
+      insecure: false
+    auth:
+      authenticator: oauth2client
+
+service:
+  extensions: [oauth2client]
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [batch, metricstransform]
+      exporters: [otlphttp]
+YAML

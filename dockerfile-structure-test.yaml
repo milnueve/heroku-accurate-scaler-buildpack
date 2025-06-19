@@ -1,0 +1,17 @@
+schemaVersion: 2.0.0
+fileExistenceTests:
+  - name: 'pushprox'
+    path: '/home/app/bin/pushprox-client'
+    shouldExist: true
+    permissions: '-rwxr-xr-x'
+  - name: 'accurate-scaler.sh'
+    path: '/home/app/.profile.d/accurate-scaler.sh'
+    shouldExist: true
+    permissions: '-rw-r--r--'
+fileContentTests:
+- name: 'accurate-scaler.sh'
+  path: '/home/app/.profile.d/accurate-scaler.sh'
+  expectedContents:
+  - 'export PATH=\$PATH:/home/app/bin'
+  - 'pushprox-client --proxy-url=\${ACCURATE_SCALER_PROXY_URL} &'
+  - 'bundle exec prometheus_exporter &'

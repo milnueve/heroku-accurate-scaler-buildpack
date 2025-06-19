@@ -1,0 +1,17 @@
+name: "Test AccurateScaler buildpack structure"
+on:
+  pull_request
+
+jobs:
+  buildpack-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@v3
+    - name: Build docker image
+      run: docker build . --file Dockerfile --tag accurate-scaler-test:$(date +%s)
+    - name: run structure tests
+      uses: plexsystems/container-structure-test-action@v0.2.0
+      with:
+        image: accurate-scaler-test:latest
+        config: dockerfile-structure-test.yaml
