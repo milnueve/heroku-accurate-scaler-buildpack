@@ -1,4 +1,4 @@
-FROM debian:latest
+FROM ubuntu:latest
 
 ENV HOME=/home
 WORKDIR /home/buildpack
