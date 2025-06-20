@@ -87,6 +87,7 @@ else
   fi
 fi
 SH
+chmod a+x ${BUILD_DIR}/.profile.d/accurate-scaler.sh
 
 arrow "Creating AccurateScaler OTel Collector Agent configuration file..."
 mkdir -p $BUILD_DIR/accurate-scaler
