@@ -101,7 +101,7 @@ receivers:
   prometheus:
     config:
       scrape_configs:
-        - job_name: "\${\${ACCURATE_SCALER_ADDON}_APP_ID}"
+        - job_name: "urn:com.accurate-scaler:scalable_service:\${\${ACCURATE_SCALER_ADDON}_APP_ID}:\${ACCURATE_SCALER_SERVICE_TYPE}"
           scrape_interval: 15s
           static_configs:
             - targets: ["localhost:9394"]
