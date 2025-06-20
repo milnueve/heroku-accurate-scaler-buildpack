@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-ENV HOME /home
+ENV HOME=/home
 WORKDIR /home/buildpack
 COPY . .
 
