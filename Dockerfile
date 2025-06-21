@@ -1,6 +1,8 @@
 FROM alpine:latest
 
-ENV HOME /home
+RUN apk add --no-cache bash curl jq
+
+ENV HOME=/home
 WORKDIR /home/buildpack
 COPY . .
 
