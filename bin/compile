@@ -123,6 +123,9 @@ processors:
           - action: add_label
             new_label: service_type
             new_value: "\${ACCURATE_SCALER_SERVICE_TYPE}"
+          - action: add_label
+            new_label: platform
+            new_value: heroku
 
 exporters:
   otlphttp:
