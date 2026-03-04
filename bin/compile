@@ -110,6 +110,10 @@ receivers:
             - source_labels: [__address__]
               target_label: instance
               replacement: "\${DYNO}"
+  otlp:
+    protocols:
+      http:
+        endpoint: "localhost:4318"
 
 processors:
   batch:
@@ -124,6 +128,9 @@ processors:
           - action: add_label
             new_label: service_type
             new_value: "\${ACCURATE_SCALER_SERVICE_TYPE}"
+          - action: add_label
+            new_label: platform
+            new_value: heroku
 
 exporters:
   otlphttp:
@@ -137,7 +144,7 @@ service:
   extensions: [oauth2client]
   pipelines:
     metrics:
-      receivers: [prometheus]
+      receivers: [prometheus, otlp]
       processors: [batch, metricstransform]
       exporters: [otlphttp]
 YAML
