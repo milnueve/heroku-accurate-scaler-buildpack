@@ -82,6 +82,7 @@ else
   if [[ \$ACCURATE_SCALER_ADDON == "" ]]; then
     echo "[accurate-scaler] ERROR: Add-on config vars missing. OTel Collector Agent won't be started."
   else
+    export ACCURATE_SCALER_APP_ID=\$(printenv "\${ACCURATE_SCALER_ADDON}_APP_ID")
     echo "[accurate-scaler] Starting OTel Collector Agent..."
     accurate-scaler-otelcol-agent --config=file:\$HOME/accurate-scaler/otelcol-agent-config.yaml &
   fi
@@ -130,6 +131,9 @@ processors:
           - action: add_label
             new_label: platform
             new_value: heroku
+          - action: add_label
+            new_label: job
+            new_value: "\${ACCURATE_SCALER_APP_ID}"
 
 exporters:
   otlphttp:
