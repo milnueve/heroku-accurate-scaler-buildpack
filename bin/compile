@@ -109,6 +109,10 @@ receivers:
             - source_labels: [__address__]
               target_label: instance
               replacement: "\${DYNO}"
+  otlp:
+    protocols:
+      http:
+        endpoint: "localhost:4318"
 
 processors:
   batch:
@@ -139,7 +143,7 @@ service:
   extensions: [oauth2client]
   pipelines:
     metrics:
-      receivers: [prometheus]
+      receivers: [prometheus, otlp]
       processors: [batch, metricstransform]
       exporters: [otlphttp]
 YAML
